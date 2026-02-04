@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='UTF-8'>
+    <style>
+        body {
+            background: white;
+            margin: 0;
+            padding: 0;
+            overflow-x: auto;
+        }
+
+        #output {
+            display: inline-block;
+            min-width: 100%;
+        }
+    </style>
+    <script src="vexflow.js"></script>
+</head>
+
+<body>
+    <div id="output"></div>
+    <script>
+        // --- FAKE console.log for SC webView ---
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            const debugDiv = document.getElementById('output');
+            const errorMsg = document.createElement('div');
+            errorMsg.style.color = 'red';
+            errorMsg.style.background = '#ffeeee';
+            errorMsg.style.padding = '10px';
+            errorMsg.style.border = '2px solid red';
+            errorMsg.style.margin = '10px';
+            errorMsg.style.fontSize = '14px';
+            errorMsg.style.fontFamily = 'monospace';
+
+            errorMsg.innerHTML = '<strong>JS ERROR:</strong> ' + msg +
+                '<br>Row: ' + lineNo +
+                '<br>Col: ' + columnNo;
+
+            debugDiv.prepend(errorMsg);
+            return false;
+        };
+
+
+
+        let currentMusicParams = null;
+        const CONFIG = {
+            PADDING: 120,
+            NOTE_WIDTH: 80,
+            SAFETY_MARGIN: 50,
+            MIN_WIDTH: 400,
+            STAVE_Y_UPPER: 50,
+            STAVE_Y_LOWER: 160,
+            CANVAS_HEIGHT: 350,
+            SCALE: 1.0
+        };
+
+        const METRICS = {
+            "4/4": { beat: 1.0, beam: 2, grouping: [2, 2] }, // Quarter note pulse, groups every 2 beats
+            "3/4": { beat: 1.0, beam: 1, grouping: [1, 1, 1] },
+            "2/4": { beat: 1.0, beam: 2, grouping: [2] },
+            "6/8": { beat: 1.5, beam: 3, grouping: [3, 3] }, // Dotted quarter note pulse (0.5 * 3), groups 3 eighth notes
+            "9/8": { beat: 1.5, beam: 3, grouping: [3, 3, 3] },
+            "5/8": { beat: 2.5, beam: 5, grouping: [5] },    // Single pulse or depending on style (can be 3+2)
+            "2/2": { beat: 2.0, beam: 2, grouping: [2] },    // Half note pulse
+        };
+
+        // --- HELPER FUNCTIONS ---
+        function convertMidiToVex(midi, keySig) {
+            const flatKeys = ["F", "Dm", "Bb", "Gm", "Eb", "Cm", "Ab", "Fm", "Db", "Bbm", "Gb", "Ebm", "Cb", "Abm"];
+            const useFlats = flatKeys.includes(keySig);
+            const names = useFlats 
+                ? ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"]
+                : ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+
+            const midis = Array.isArray(midi) ? midi : [midi];
+            let keys = [];
+            let accidentals = [];
+            midis.forEach(m => {
+                const roundedMidi = Math.round(m * 2) / 2; // Rounds to the nearest 0.5
+                const baseMidi = Math.floor(roundedMidi);
+                const fraction = roundedMidi - baseMidi;
+                
+                const noteName = names[baseMidi % 12];
+                const octave = Math.floor(baseMidi / 12) - 1;
+                keys.push(noteName + "/" + octave);
+                
+                let acc = null;
+                if (fraction !== 0 && Math.abs(fraction - 0.5) < 0.01) {
+                    acc = "+"; // Microtone 
+                }
+                accidentals.push(acc);
+            });
+            const avgMidi = midis.reduce((a, b) => a + b, 0) / midis.length;
+            const clef = (avgMidi >= 60) ? "treble" : "bass";
+            return { keys, accidentals, clef };
+        }
+
+        function convertDurToVex(dur) {
+            const d = Math.round(dur * 1000) / 1000; 
+
+            const durMap = {
+                "4": "w", "6": "wd",
+                "2": "h", "3": "hd",
+                "1": "q", "1.5": "qd",
+                "0.5": "8", "0.75": "8.",
+                "0.25": "16", "0.375": "16.",
+                "0.125": "32", "0.1875": "32." 
+            };
+
+            if (durMap[d.toString()]) return durMap[d.toString()];
+
+            // 1. Quarter Note Quintuplet (Total 1.0)
+            // 5 notes instead of 4 sixteenth notes
+            if (Math.abs(d - 0.2) < 0.02) return "16";
+            if (Math.abs(d - 0.4) < 0.02) return "8";   // 0.4 = 2/5 of a quarter note
+            if (Math.abs(d - 0.6) < 0.02) return "8.";  // 0.6 = 3/5
+            if (Math.abs(d - 0.8) < 0.02) return "q";   // 0.8 = 4/5
+
+            // 2. Eighth Note Quintuplet (Total 0.5)
+            // 5 notes instead of 4 thirty-second notes
+            if (Math.abs(d - 0.1) < 0.02) return "32";
+            if (Math.abs(d - 0.2) < 0.02) return "16";
+
+            // 3. Quarter Note Triplet (Total 1.0)
+            // 3 notes instead of 2 eighth notes
+            if (Math.abs(d - 0.333) < 0.02) return "8";
+            if (Math.abs(d - 0.666) < 0.02) return "q";
+
+            // 4. Eighth Note Triplet (Total 0.5)
+            // 3 notes instead of 2 sixteenth notes
+            if (Math.abs(d - 0.166) < 0.02) return "16";
+
+            return "q"; // Fallback
+        }
+
+        // Function to fetch metric or calculate a default if not in dictionary
+        const getMetric = (timeSig) => {
+            if (METRICS[timeSig]) return METRICS[timeSig];
+
+            const [num, den] = timeSig.split('/').map(Number);
+            return {
+                beat: 4 / den,
+                beam: 1,
+                grouping: Array(num).fill(1)
+            };
+        };
+
+        function processDataToVex(notesData, VF, staves, keySig) {
+            const upperNotes = [];
+            const lowerNotes = [];
+            const allRealNotes = []; // Master voice for cross-staff Beams
+
+            notesData.forEach((item, i) => {
+                const prev = i > 0 ? notesData[i - 1] : null;
+                const next = i < notesData.length - 1 ? notesData[i + 1] : null;
+
+                // 1. Get raw duration (may come with "." from convertDurToVex)
+                const vexDurRaw = convertDurToVex(item.dur);
+                const hasDot = vexDurRaw.includes(".");
+                const vexDur = vexDurRaw.replace(".", ""); // Base duration for VexFlow
+
+                const isRestInJSON = (item.midi === null || item.midi === "rest" || item.midi === "r");
+
+                // 2. REAL REST HANDLING (Where the missing lines go)
+                if (isRestInJSON) {
+                    const upperRest = new VF.StaveNote({ clef: "treble", keys: ["b/4"], duration: vexDur + "r" });
+                    const lowerRest = new VF.StaveNote({ clef: "bass", keys: ["d/3"], duration: vexDur + "r" });
+
+                    // If the rest is dotted, add the visual dot
+                    if (hasDot) {
+                        VF.Dot.buildAndAttach([upperRest, lowerRest], { all: true });
+                    }
+
+                    lowerRest.setStyle({ fillStyle: "transparent", strokeStyle: "transparent" });
+
+                    upperNotes.push(upperRest);
+                    lowerNotes.push(lowerRest);
+                    allRealNotes.push(upperRest);
+                    return; // Exit this iteration and go to the next note
+                }
+
+                // REAL NOTE HANDLING (Here we use memory)
+                const info = convertMidiToVex(item.midi, keySig);
+
+                // Example decision using memory:
+                // If previous note was Bass clef, and this is Bass too,
+   
+                let stemDirection = null;
+                const isTuplet = (Math.abs(item.dur - 0.333) < 0.05 || Math.abs(item.dur - 0.666) < 0.05);
+                const realNote = new VF.StaveNote({
+                    clef: info.clef,
+                    keys: info.keys,
+                    duration: vexDur,
+                    stem_direction: stemDirection
+                });
+
+                realNote.is_tuplet = isTuplet;
+
+                // ADDS VISUAL DOT (Essential for durations like 0.75 or 1.5)
+                if (hasDot) {
+                    VF.Dot.buildAndAttach([realNote], { all: true });
+                }
+
+                // TUPLET LOGIC (Triplets/Quintuplets)
+                // If duration is not divisible by powers of 2 and not dotted, mark as tuplet
+
+                if (isTuplet) {
+                    realNote.tuplet_value = item.dur;
+                }
+
+                // If note is bass clef, anchor it to the lower stave
+                if (info.clef === "bass") {
+                    realNote.setStave(staves.staveLower);
+                } else {
+                    realNote.setStave(staves.staveUpper);
+                }
+
+                // Add accidentals (Manual microtones only, VexFlow handles the rest)
+                info.accidentals.forEach((acc, index) => {
+                    if (acc) realNote.addModifier(new VF.Accidental(acc), index);
+                });
+
+                allRealNotes.push(realNote);
+
+                // 4. CREATION OF SYNC GHOSTS
+                const createGhost = (clef, key) => {
+                    const g = new VF.StaveNote({ clef: clef, keys: [key], duration: vexDur + "r" });
+                    if (hasDot) VF.Dot.buildAndAttach([g], { all: true });
+                    g.setStyle({ fillStyle: "transparent", strokeStyle: "transparent" });
+                    g.is_tuplet = isTuplet; // THE GHOST ALSO NEEDS THIS MARK
+                    return g;
+                };
+
+                if (info.clef === "treble") {
+                    upperNotes.push(realNote);
+                    lowerNotes.push(createGhost("bass", "d/3"));
+                } else {
+                    lowerNotes.push(realNote);
+                    upperNotes.push(createGhost("treble", "b/4"));
+                }
+            });
+
+            return { upper: upperNotes, lower: lowerNotes, master: allRealNotes };
+        }
+
+        /**
+         * Calculates rhythmic segmentation based on received metric.
+         * Splits notes crossing beat and measure boundaries.
+         */
+        const segmentNotes = (data, timeSig) => {
+            const metric = getMetric(timeSig);
+            const [numerator, denominator] = timeSig.split('/').map(Number);
+            const beatValue = metric.beat;
+            const measureSize = numerator * (4 / denominator);
+            const TOLERANCE = 0.0001;
+
+            let segmented = [];
+            let absPos = 0;
+
+            data.forEach(note => {
+                let remaining = Math.round(note.dur * 10000) / 10000;
+
+                // --- NEW: Detects if tuplet to avoid segmentation ---
+                const standardDurs = [4, 3, 2, 1.5, 1, 0.75, 0.5, 0.375, 0.25, 0.125, 0.1875];
+                const isTuplet = !standardDurs.some(s => Math.abs(note.dur - s) < 0.01) && note.dur > 0;
+
+                while (remaining > TOLERANCE) {
+                    let posInMeasure = Math.round((absPos % measureSize) * 10000) / 10000;
+                    let nextBeat = (Math.floor((posInMeasure / beatValue) + TOLERANCE) + 1) * beatValue;
+                    let nextMeasure = measureSize;
+                    let nextBoundary = Math.min(nextBeat, nextMeasure);
+
+                    if (Math.abs(posInMeasure - measureSize) < TOLERANCE) {
+                        nextBoundary = beatValue;
+                    }
+
+                    let spaceAvailable = Math.round((nextBoundary - posInMeasure) * 10000) / 10000;
+
+                    // If tuplet, ignore beat break and skip to end of note
+                    if (isTuplet || remaining <= spaceAvailable + TOLERANCE) {
+                        segmented.push({ ...note, dur: remaining, tiedToNext: false });
+                        absPos = Math.round((absPos + remaining) * 10000) / 10000;
+                        remaining = 0;
+                    } else {
+                        // Normal segmentation for non-tuplet notes
+                        segmented.push({
+                            ...note,
+                            dur: spaceAvailable,
+                            tiedToNext: (note.midi !== null && note.midi !== "rest" && note.midi !== "r")
+                        });
+                        remaining = Math.round((remaining - spaceAvailable) * 10000) / 10000;
+                        absPos = Math.round((absPos + spaceAvailable) * 10000) / 10000;
+                    }
+                }
+            });
+            return segmented;
+        };
+
+        // --- PIPELINE MODULES ---
+
+        /** 1. Prepares raw data */
+        const sanitizeData = (data) => {
+            const raw = typeof data === 'string' ? JSON.parse(data) : data;
+   
+            return raw.map(note => {
+                let d = note.dur;
+                if (Math.abs(d - 0.33) < 0.02) d = 1 / 3;
+                if (Math.abs(d - 0.66) < 0.02) d = 2 / 3;
+                if (Math.abs(d - 0.166) < 0.02) d = 1 / 6;
+
+                // Rounds MIDI to quarter tones (0.5) to avoid rendering errors
+                let m = note.midi;
+                if (typeof m === 'number') {
+                    m = Math.round(m * 2) / 2;
+                }
+                return { ...note, dur: d, midi: m };
+            });
+        };
+
+        /** 2. Calculates dimensions based on notes */
+        const calculateLayout = (notesCount) => {
+            const dynamicWidth = Math.max(
+                CONFIG.MIN_WIDTH,
+                CONFIG.PADDING + (notesCount * CONFIG.NOTE_WIDTH) + CONFIG.SAFETY_MARGIN
+            );
+            return {
+                width: dynamicWidth,
+                totalCanvasWidth: dynamicWidth + 150
+            };
+        };
+
+        /** 3. Initializes Renderer and Context */
+        const initRenderer = (div, width, VF) => {
+            const renderer = new VF.Renderer(div, VF.Renderer.Backends.SVG);
+            renderer.resize(width, CONFIG.CANVAS_HEIGHT);
+            const context = renderer.getContext();
+            return { renderer, context };
+        };
+
+        /** 4. Creates and draws staves and connectors */
+        const setupStaves = (context, width, params, VF) => {
+            const { clefUpper, clefLower, timeSig, keySig } = params;
+
+            const staveUpper = new VF.Stave(50, CONFIG.STAVE_Y_UPPER, width);
+            const staveLower = new VF.Stave(50, CONFIG.STAVE_Y_LOWER, width);
+
+            staveUpper.addClef(clefUpper).addTimeSignature(timeSig).addKeySignature(keySig);
+            staveLower.addClef(clefLower).addTimeSignature(timeSig).addKeySignature(keySig);
+
+            staveUpper.setContext(context).draw();
+            staveLower.setContext(context).draw();
+
+            // Draws braces and connectors
+            new VF.StaveConnector(staveUpper, staveLower).setType(VF.StaveConnector.type.BRACE).setContext(context).draw();
+            new VF.StaveConnector(staveUpper, staveLower).setType(VF.StaveConnector.type.SINGLE_LEFT).setContext(context).draw();
+
+            return { staveUpper, staveLower };
+        };
+
+        /** 5. Organizes voices and formats notes in space */
+        const drawVoices = (context, staves, processed, width, VF, timeSig, segmentedData, keySig) => {
+            const metric = getMetric(timeSig);
+            const [num, den] = timeSig.split('/').map(Number);
+            const measureSize = num * (4 / den);
+
+            const totalDuration = segmentedData.reduce((acc, item) => acc + item.dur, 0);
+            const totalBeats = Math.round((totalDuration / (4 / den)) * 1000) / 1000;
+
+            const voiceUpper = new VF.Voice({
+                num_beats: totalBeats,
+                beat_value: den
+            }).setMode(VF.Voice.Mode.SOFT);
+
+            const voiceLower = new VF.Voice({
+                num_beats: totalBeats,
+                beat_value: den
+            }).setMode(VF.Voice.Mode.SOFT);
+    
+            voiceUpper.addTickables(processed.upper);
+            voiceLower.addTickables(processed.lower);
+
+            // --- AUTOMATIC ACCIDENTAL APPLICATION BASED ON KEY SIGNATURE ---
+            VF.Accidental.applyAccidentals([voiceUpper], keySig);
+            VF.Accidental.applyAccidentals([voiceLower], keySig);
+
+            const beams = [];
+            const tuplets = [];
+            let currentBeamGroup = [];
+            let tupletStackUpper = [];
+            let tupletStackLower = [];
+            let tupletAcc = 0;
+            let runPos = 0;
+            const TOLERANCE = 0.01;
+
+            processed.master.forEach((note, i) => {
+                const item = segmentedData[i];
+                const durVal = item.dur;
+
+                const standardDurs = [4, 3, 2, 1.5, 1, 0.75, 0.5, 0.375, 0.25, 0.125];
+                const isNoteTuplet = !standardDurs.some(s => Math.abs(durVal - s) < 0.01) && durVal > 0;
+
+                const durationType = note.getDuration();
+                const canReceiveBeam = !["q", "h", "w"].some(d => durationType.includes(d));
+
+                if (isNoteTuplet) {
+                    tupletStackUpper.push(processed.upper[i]);
+                    tupletStackLower.push(processed.lower[i]);
+                    tupletAcc += durVal;
+                }
+
+                // Beam grouping logic
+                if (canReceiveBeam && !note.isRest()) {
+                    currentBeamGroup.push(note);
+                } else {
+                    if (currentBeamGroup.length > 1) {
+                        beams.push(new VF.Beam(currentBeamGroup));
+                    }
+                    currentBeamGroup = [];
+                }
+
+                runPos = Math.round((runPos + durVal) * 1000) / 1000;
+
+                const nextItem = segmentedData[i + 1];
+                const isNextT = nextItem ? (!standardDurs.some(s => Math.abs(nextItem.dur - s) < 0.01)) : false;
+
+                const grid = 0.25;
+                const remainder = tupletAcc % grid;
+                const distToGrid = Math.min(remainder, grid - remainder);
+
+                const isTEnd = (tupletStackUpper.length > 1) &&
+                    (distToGrid < 0.01 || !isNextT);
+
+                const isBoundary = (Math.abs(runPos % metric.beat) < TOLERANCE) ||
+                    (Math.abs((runPos % metric.beat) - metric.beat) < TOLERANCE);
+                const isEndOfData = i === processed.master.length - 1;
+
+                // Decision to close Beam
+                if (currentBeamGroup.length > 1 && (isBoundary || isEndOfData || note.isRest())) {
+                    beams.push(new VF.Beam(currentBeamGroup));
+                    currentBeamGroup = [];
+                }
+
+                if (isNoteTuplet && isTEnd && tupletStackUpper.length > 1) {
+                    // --- DYNAMIC TUPLET NUMBER CALCULATION ---
+                    const getVexNoteValue = (note) => {
+                        const durStr = note.getDuration().replace('r', '');
+                        const baseMap = { 'w': 4, 'h': 2, 'q': 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 };
+                        let base = durStr.replace(/[d.]/g, '');
+                        let val = baseMap[base] || 0;
+                        if (durStr.includes('d') || durStr.includes('.')) val *= 1.5;
+                        return val;
+                    };
+
+                    let visualTotal = tupletStackUpper.reduce((acc, n) => acc + getVexNoteValue(n), 0);
+                    let ratio = tupletAcc > 0 ? visualTotal / tupletAcc : 1;
+                    
+                    let num_notes = tupletStackUpper.length; 
+                    let notes_occupied = 2;
+
+                    // Finds simplest integer ratio (e.g. 1.25 -> 5:4)
+                    for (let den of [1, 2, 4, 8, 16, 32, 64]) {
+                        let num = ratio * den;
+                        if (Math.abs(num - Math.round(num)) < 0.01) {
+                            num_notes = Math.round(num);
+                            notes_occupied = den;
+                            break;
+                        }
+                    }
+
+                    // Decides where to draw bracket (Upper or Lower Stave)
+                    const upperCount = tupletStackUpper.filter(n => !n.isRest()).length;
+                    const lowerCount = tupletStackLower.filter(n => !n.isRest()).length;
+                    const renderOnUpper = upperCount >= lowerCount;
+
+                    // If notes are "beamable" (eighths or smaller), hide bracket
+                    // to follow convention (number over beam) and avoid horizontal collision.
+                    const isBeamable = tupletStackUpper.length > 0 && /8|16|32|64/.test(tupletStackUpper[0].getDuration());
+
+                    const t = new VF.Tuplet(tupletStackUpper, {
+                        location: VF.Tuplet.LOCATION_TOP,
+                        num_notes: num_notes,
+                        notes_occupied: notes_occupied,
+                        ratioed: false,
+                        bracketed: !isBeamable
+                    });
+                    if (!renderOnUpper) {
+                        t.setBracketed(false);
+                        t.numerator_glyphs = []; // Visually remove numbers
+                        t.denom_glyphs = [];
+                    }
+                    tuplets.push(t);
+
+                    const gt = new VF.Tuplet(tupletStackLower, {
+                        location: VF.Tuplet.LOCATION_TOP,
+                        num_notes: num_notes,
+                        notes_occupied: notes_occupied,
+                        ratioed: false,
+                        bracketed: !isBeamable
+                    });
+                    if (renderOnUpper) {
+                        gt.setBracketed(false);
+                        gt.numerator_glyphs = []; // Visually remove numbers
+                        gt.denom_glyphs = [];
+                    }
+                    tuplets.push(gt);
+
+                    tupletStackUpper = [];
+                    tupletStackLower = [];
+                    tupletAcc = 0;
+                }
+
+                // 3. SAFETY RESET (The line in question)
+                // It ensures that if the note is a rest or long note,
+                // the next beam group starts from zero.
+                if (isBoundary || note.isRest() || !canReceiveBeam) {
+                    currentBeamGroup = [];
+                }
+
+            });
+
+            const formatter = new VF.Formatter().joinVoices([voiceUpper, voiceLower]);
+            formatter.format([voiceUpper, voiceLower], width - 100);
+
+            voiceUpper.draw(context, staves.staveUpper);
+            voiceLower.draw(context, staves.staveLower);
+
+            beams.forEach(b => b.setContext(context).draw());
+            tuplets.forEach(t => t.setContext(context).draw());
+
+            staves.staveUpper.setEndBarType(VF.Barline.type.END);
+            staves.staveLower.setEndBarType(VF.Barline.type.END);
+            staves.staveUpper.draw();
+            staves.staveLower.draw();
+
+            new VF.StaveConnector(staves.staveUpper, staves.staveLower)
+                .setType(VF.StaveConnector.type.BOLD_DOUBLE_RIGHT).setContext(context).draw();
+
+            let currentBarPos = 0;
+            segmentedData.forEach((item, i) => {
+                currentBarPos += item.dur;
+                if (Math.abs(currentBarPos % measureSize) < TOLERANCE && i < segmentedData.length - 1) {
+                    const x = processed.upper[i].getAbsoluteX() + 40;
+                    context.beginPath();
+                    context.setLineWidth(2);
+                    context.moveTo(x, staves.staveUpper.getYForLine(0));
+                    context.lineTo(x, staves.staveLower.getYForLine(4));
+                    context.stroke();
+                }
+            });
+
+            const ties = [];
+            segmentedData.forEach((item, i) => {
+                if (item.tiedToNext && processed.upper[i + 1]) {
+                    if (!processed.upper[i].isRest()) ties.push(new VF.StaveTie({ first_note: processed.upper[i], last_note: processed.upper[i + 1] }));
+                    if (!processed.lower[i].isRest()) ties.push(new VF.StaveTie({ first_note: processed.lower[i], last_note: processed.lower[i + 1] }));
+                }
+            });
+            ties.forEach(t => t.setContext(context).draw());
+        };
+
+        // --- MAIN FUNCTION (Entry Point) ---
+        window.drawMusic = (clefUpper, clefLower, timeSig, keySig, data, scale, canvasHeight) => {
+            // Memorizes parameters so resize knows what to draw
+            currentMusicParams = { clefUpper, clefLower, timeSig, keySig, data, scale, canvasHeight };
+
+            // Calls render executor
+            renderMusic();
+        };
+
+        // --- NEW ENTRY FUNCTION (Compatible with SC config object) ---
+        window.drawMusicFromConfig = (config) => {
+            currentMusicParams = {
+                clefUpper: config.clefTreble || "treble",
+                clefLower: config.clefBass || "bass",
+                timeSig: config.timeSignature || "4/4",
+                keySig: config.keySignature || "C",
+                data: config.notes || [],
+                scale: config.scale || 1.0,
+                canvasHeight: config.canvasHeight || 350
+            };
+            renderMusic();
+        };
+
+        // --- RENDER EXECUTOR ---
+        const renderMusic = () => {
+            if (!currentMusicParams) return;
+
+            const div = document.getElementById('output');
+            div.innerHTML = ""; // Clears to avoid overlap
+
+            // Version check (Kept as per your original code)
+            const VF = (typeof VexFlow !== 'undefined') ? VexFlow : Vex.Flow;
+            const { clefUpper, clefLower, timeSig, keySig, data, scale, canvasHeight } = currentMusicParams;
+
+            // Configures scale and height based on parameters received from SC
+            CONFIG.SCALE = scale;
+            CONFIG.CANVAS_HEIGHT = canvasHeight;
+
+            const execute = () => {
+                // div.innerHTML = "<pre>Debug Data: " + JSON.stringify(data, null, 2) + "</pre>"; // for Debugging
+
+                const rawData = sanitizeData(data);
+                const segmentedData = segmentNotes(rawData, timeSig);
+                const layout = calculateLayout(segmentedData.length);
+                const scale = CONFIG.SCALE;
+
+                // RESIZE ADJUSTMENT: Calculates width based on current HTML container
+                const dynamicWidth = Math.max(layout.width, (window.innerWidth - 100) / scale);
+                const totalCanvasWidth = dynamicWidth + 100;
+
+                // Initializes taking the full object
+                const result = initRenderer(div, totalCanvasWidth * scale, VF);
+                const renderer = result.renderer;
+                const context = result.context;
+                
+                renderer.resize(totalCanvasWidth * scale, CONFIG.CANVAS_HEIGHT * scale);
+                context.scale(scale, scale);
+
+                const staves = setupStaves(context, dynamicWidth, {
+                    clefUpper, clefLower, timeSig, keySig
+                }, VF);
+
+                const processed = processDataToVex(segmentedData, VF, staves, keySig);
+
+                drawVoices(context, staves, processed, dynamicWidth, VF, timeSig, segmentedData, keySig);
+                renderer.resize(totalCanvasWidth * scale, CONFIG.CANVAS_HEIGHT * scale);
+            };
+
+            // Font check (Kept as per your original code)
+            if (VF.loadFonts) {
+                VF.loadFonts('Bravura', 'Academico').then(execute);
+            } else {
+                execute();
+            }
+        };
+
+        // --- RESIZE LISTENER ---
+        const handleResize = () => {
+            clearTimeout(window.resizeTimeout);
+            window.resizeTimeout = setTimeout(() => {
+                renderMusic();
+            }, 150);
+        };
+
+        window.addEventListener('resize', handleResize);
+        window.addEventListener('orientationchange', handleResize);
+    </script>
+</body>
+</html>
