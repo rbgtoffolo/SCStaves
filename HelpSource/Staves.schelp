@@ -10,7 +10,10 @@ As I am not an experienced JS programmer, I utilized AI assistance to develop fe
 
 The project is currently in its early stages of  development and is open to suggestions, feedback, and potential collaborations.
 
-It Depends JSONlib availabe via Quarks.
+To make the Staves class work, two dependencies are required: JSONlib and vexflow.js.
+
+JSONlib can be found in the SuperCollider Quarks repository, while vexflow.js is available at: https://github.com/0xfe/vexflow/releases
+Locate vexflow.js in the /build/cjs folder and copy it to Extensions/Staves folder.
 
 It supports:
 list::
