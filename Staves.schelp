@@ -1,0 +1,132 @@
+TITLE:: Staves
+SUMMARY:: Music notation rendering using VexFlow in a WebView
+CATEGORIES:: GUI, Notation
+RELATED:: Classes/WebView, Classes/Pbind
+
+DESCRIPTION::
+This class allows for music notation rendering within SuperCollider using the VexFlow library. The integration is achieved through a WebView that dynamically injects the JavaScript graphics engine into an HTML template.
+
+It supports:
+list::
+## Dynamic Code Injection
+## SVG Rendering
+## Clef Support (Treble, Bass, Grand Staff)
+## Time Signatures
+## Automatic Grand Staff distribution
+## Dynamic Scaling
+## Microtonality (Quarter tones)
+## Tuplets
+## Quantization
+::
+
+CLASSMETHODS::
+
+METHOD:: new
+Creates a new instance of Staves. Note that this does not open the window immediately; you typically call link::#setup:: to initialize the view.
+
+ARGUMENT:: timeSignature
+Default: "4/4"
+
+ARGUMENT:: keySignature
+Default: "C"
+
+ARGUMENT:: staffSize
+Default: "medium"
+
+ARGUMENT:: quantization
+Default: nil
+
+ARGUMENT:: posX
+Default: 100
+
+ARGUMENT:: posY
+Default: 500
+
+ARGUMENT:: winWidth
+Default: 950
+
+ARGUMENT:: winHeight
+Default: 450
+
+INSTANCEMETHODS::
+
+METHOD:: setup
+Initializes the window and configures the score view.
+
+ARGUMENT:: timeSignature
+A String representing the time signature (e.g., "4/4", "3/4", "6/8").
+
+ARGUMENT:: keySignature
+A String representing the key signature (e.g., "C", "F#", "Bb").
+
+ARGUMENT:: staffSize
+A String representing the size of the notation ("small", "medium", "large").
+
+ARGUMENT:: quantization
+A Number or nil. If provided, note durations will be rounded to this value (e.g., 0.25 for sixteenth notes).
+
+ARGUMENT:: posX
+Window X position.
+
+ARGUMENT:: posY
+Window Y position.
+
+ARGUMENT:: winWidth
+Window width.
+
+ARGUMENT:: winHeight
+Window height.
+
+METHOD:: createScore
+Generates and renders the score from a Pattern.
+
+ARGUMENT:: pbind
+A Pbind object containing note data. The class looks for \midinote and \dur keys.
+
+ARGUMENT:: numEvents
+Integer. The number of events to generate. Default is 8.
+
+ARGUMENT:: quant
+Optional Number. Overrides the instance's quantization setting for this specific generation.
+
+METHOD:: updateView
+Refreshes the WebView with the current note data.
+
+METHOD:: quantization
+Get or set the global quantization value.
+
+METHOD:: timeSignature
+Get or set the time signature.
+
+METHOD:: keySignature
+Get or set the key signature.
+
+METHOD:: staffSize
+Get or set the staff size.
+
+EXAMPLES::
+
+code::
+(
+// Initialize the class
+a = Staves.new;
+
+// 1. Configure the view
+// Arguments: timeSig, keySig, size ("small", "medium", "large")
+a.setup("3/4", "C", "medium");
+
+// 2. Generate score from a Pbind
+// The system automatically converts durations and pitches (including microtones)
+p = Pbind(
+    \degree, Pseq((0..5), 1),
+    \dur, Pseq([
+        0.5/5, 0.5/5, 0.5/5, 0.5/5, 0.5/5, // Quintuplet
+        0.25, 0.25,                        // Sixteenth notes
+        0.5                                // Eighth note
+    ], 1)
+);
+
+// Render 8 events from the Pbind, optionally quantizing to 16th notes (0.25)
+a.createScore(p, 8, 0.25);
+)
+::
