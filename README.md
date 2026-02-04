@@ -6,6 +6,13 @@ As I am not an experienced JS programmer, I utilized AI assistance to develop fe
 
 The project is currently in its early stages of  development and is open to suggestions, feedback, and potential collaborations.
 
+**For the class to work, vexflow.js must be in the same folder as Staves.sc.**
+
+1. Download Vexflow at: https://github.com/0xfe/vexflow/releases
+2. Locate **vexflow.js** file in the build/cjs folder.
+3. Copy vexflow.js to the Extensions/Staves folder.
+
+
 ## 🚀 Implemented Features
 
 * 💉 **Dynamic Code Injection**: The class reads the local `vexflow.js` file and injects it directly into the HTML to bypass local file security restrictions (CORS).
