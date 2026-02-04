@@ -4,13 +4,19 @@ CATEGORIES:: GUI, Notation
 RELATED:: Classes/WebView, Classes/Pbind
 
 DESCRIPTION::
-This class allows for music notation rendering within SuperCollider using the VexFlow library. The integration is achieved through a WebView that dynamically injects the JavaScript graphics engine into an HTML template.
+This class provides a convenient way to render musical notation using VexFlow in a WebView. It's particularly useful for creating dynamic music score viewer for Supercollider using the vexflow library and Supercollider's helpBrowser. The class converts data from a Pbind into musical notation.
+
+As I am not an experienced JS programmer, I utilized AI assistance to develop features and comprehend vexflow functionality.
+
+The project is currently in its early stages of  development and is open to suggestions, feedback, and potential collaborations.
+
+It Depends JSONlib availabe via Quarks.
 
 It supports:
 list::
 ## Dynamic Code Injection
 ## SVG Rendering
-## Clef Support (Treble, Bass, Grand Staff)
+## Clef Support (Treble, Bass, Grgit and Staff)
 ## Time Signatures
 ## Automatic Grand Staff distribution
 ## Dynamic Scaling
@@ -128,5 +134,21 @@ p = Pbind(
 
 // Render 8 events from the Pbind, optionally quantizing to 16th notes (0.25)
 a.createScore(p, 8, 0.25);
+)
+
+// Tuplets example
+(
+a = Staves.new();
+a.setup(staffSize: "small", winWidth: 1350);
+p = Pbind(\degree, Pseq((-9..13),1), \dur, Pseq([
+0.5/5, 0.5/5, 2*(0.5/5), 0.5/5,
+0.25,0.25,
+0.25,0.25,0.25,0.25,
+1,
+0.25,0.5,0.5,0.75,
+0.33, 0.33, 0.33,
+0.166,0.166,0.166,
+0.5],1));
+a.createScore(p, 23);
 )
 ::
