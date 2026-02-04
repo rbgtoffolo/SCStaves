@@ -473,17 +473,13 @@
                     const upperCount = tupletStackUpper.filter(n => !n.isRest()).length;
                     const lowerCount = tupletStackLower.filter(n => !n.isRest()).length;
                     const renderOnUpper = upperCount >= lowerCount;
-
-                    // If notes are "beamable" (eighths or smaller), hide bracket
-                    // to follow convention (number over beam) and avoid horizontal collision.
-                    const isBeamable = tupletStackUpper.length > 0 && /8|16|32|64/.test(tupletStackUpper[0].getDuration());
-
+                    
                     const t = new VF.Tuplet(tupletStackUpper, {
                         location: VF.Tuplet.LOCATION_TOP,
                         num_notes: num_notes,
                         notes_occupied: notes_occupied,
-                        ratioed: false,
-                        bracketed: !isBeamable
+                        ratioed: false, // The bracket will now always be visible
+                        bracketed: true
                     });
                     if (!renderOnUpper) {
                         t.setBracketed(false);
@@ -496,8 +492,8 @@
                         location: VF.Tuplet.LOCATION_TOP,
                         num_notes: num_notes,
                         notes_occupied: notes_occupied,
-                        ratioed: false,
-                        bracketed: !isBeamable
+                        ratioed: false, // The bracket will now always be visible
+                        bracketed: true
                     });
                     if (renderOnUpper) {
                         gt.setBracketed(false);
