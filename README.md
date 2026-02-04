@@ -1,4 +1,4 @@
-# 🎼 SC-VexFlow Staves
+# 🎼 SC-Staves
 
 This project aims to create a score viewer for Supercollider using the vexflow library and Supercollider's helpBrowser. The class converts data from a Pbind into musical notation.
 
