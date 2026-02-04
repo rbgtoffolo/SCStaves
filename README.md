@@ -6,7 +6,16 @@ As I am not an experienced JS programmer, I utilized AI assistance to develop fe
 
 The project is currently in its early stages of  development and is open to suggestions, feedback, and potential collaborations.
 
-**For the class to work, vexflow.js must be in the same folder as Staves.sc.**
+## Dependencies
+
+To make the Staves class work, two dependencies are required: JSONlib and vexflow.js.
+
+### JSONlib
+
+Just run **Quarks.install("JSONlib");** in Supercollider.
+
+### Vexflow
+
 
 1. Download Vexflow at: https://github.com/0xfe/vexflow/releases
 2. Locate **vexflow.js** file in the build/cjs folder.
