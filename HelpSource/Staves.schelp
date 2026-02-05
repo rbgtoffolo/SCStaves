@@ -127,7 +127,7 @@ a.setup("3/4", "C", "medium");
 // 2. Generate score from a Pbind
 // The system automatically converts durations and pitches (including microtones)
 p = Pbind(
-    \degree, Pseq((0..5), 1),
+    \degree, Pseq((0..7), 1),
     \dur, Pseq([
         0.5/5, 0.5/5, 0.5/5, 0.5/5, 0.5/5, // Quintuplet
         0.25, 0.25,                        // Sixteenth notes
@@ -136,7 +136,7 @@ p = Pbind(
 );
 
 // Render 8 events from the Pbind, optionally quantizing to 16th notes (0.25)
-a.createScore(p, 8, 0.25);
+a.createScore(p, 8);
 )
 
 // Tuplets example
