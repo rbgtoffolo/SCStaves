@@ -387,7 +387,7 @@
 
             const beams = [];
             const tuplets = [];
-            let currentBeamGroup = [];
+            let currentBeamGroup = []; // Now stores {note, index}
             let tupletStackUpper = [];
             let tupletStackLower = [];
             let tupletAcc = 0;
@@ -398,52 +398,66 @@
                 const item = segmentedData[i];
                 const durVal = item.dur;
 
+                // --- Tuplet & Beam Detection ---
                 const standardDurs = [4, 3, 2, 1.5, 1, 0.75, 0.5, 0.375, 0.25, 0.125];
                 const isNoteTuplet = !standardDurs.some(s => Math.abs(durVal - s) < 0.01) && durVal > 0;
-
                 const durationType = note.getDuration();
                 const canReceiveBeam = !["q", "h", "w"].some(d => durationType.includes(d));
+                const isBeamBreaker = note.isRest() || !canReceiveBeam;
 
+                // --- Grouping Logic ---
                 if (isNoteTuplet) {
                     tupletStackUpper.push(processed.upper[i]);
                     tupletStackLower.push(processed.lower[i]);
                     tupletAcc += durVal;
                 }
+                if (!isBeamBreaker) {
+                    currentBeamGroup.push({ note: note, index: i });
+                }
 
-                // Beam grouping logic
-                if (canReceiveBeam && !note.isRest()) {
-                    currentBeamGroup.push(note);
-                } else {
+                // --- Position Tracking & Boundary Detection ---
+                runPos = Math.round((runPos + durVal) * 1000) / 1000;
+                const isBoundary = (Math.abs(runPos % metric.beat) < TOLERANCE) || (Math.abs((runPos % metric.beat) - metric.beat) < TOLERANCE);
+                const isEndOfData = i === processed.master.length - 1;
+
+                // --- Finalize Beam Group ---
+                if (currentBeamGroup.length > 0 && (isBeamBreaker || isBoundary || isEndOfData)) {
                     if (currentBeamGroup.length > 1) {
-                        beams.push(new VF.Beam(currentBeamGroup));
+                        const notesForBeam = currentBeamGroup.map(item => item.note);
+                        const secondaryBreaks = [];
+
+                        // Find transitions between tuplet and non-tuplet notes to break secondary beams
+                        for (let j = 0; j < currentBeamGroup.length - 1; j++) {
+                            const cIdx = currentBeamGroup[j].index;
+                            const nIdx = currentBeamGroup[j + 1].index;
+                            const cDur = segmentedData[cIdx].dur;
+                            const nDur = segmentedData[nIdx].dur;
+                            const isCurrentTuplet = !standardDurs.some(s => Math.abs(cDur - s) < 0.01) && cDur > 0;
+                            const isNextTuplet = !standardDurs.some(s => Math.abs(nDur - s) < 0.01) && nDur > 0;
+
+                            if (isCurrentTuplet !== isNextTuplet) {
+                                secondaryBreaks.push(j); // Break after note at index j
+                            }
+                        }
+
+                        const beam = new VF.Beam(notesForBeam);
+                        if (secondaryBreaks.length > 0 && beam.breakSecondaryAt) {
+                            beam.breakSecondaryAt(secondaryBreaks);
+                        }
+                        beams.push(beam);
                     }
                     currentBeamGroup = [];
                 }
 
-                runPos = Math.round((runPos + durVal) * 1000) / 1000;
-
+                // --- Finalize Tuplet Group ---
                 const nextItem = segmentedData[i + 1];
                 const isNextT = nextItem ? (!standardDurs.some(s => Math.abs(nextItem.dur - s) < 0.01)) : false;
-
                 const grid = 0.25;
                 const remainder = tupletAcc % grid;
                 const distToGrid = Math.min(remainder, grid - remainder);
-
-                const isTEnd = (tupletStackUpper.length > 1) &&
-                    (distToGrid < 0.01 || !isNextT);
-
-                const isBoundary = (Math.abs(runPos % metric.beat) < TOLERANCE) ||
-                    (Math.abs((runPos % metric.beat) - metric.beat) < TOLERANCE);
-                const isEndOfData = i === processed.master.length - 1;
-
-                // Decision to close Beam
-                if (currentBeamGroup.length > 1 && (isBoundary || isEndOfData || note.isRest())) {
-                    beams.push(new VF.Beam(currentBeamGroup));
-                    currentBeamGroup = [];
-                }
+                const isTEnd = (tupletStackUpper.length > 1) && (distToGrid < 0.01 || !isNextT);
 
                 if (isNoteTuplet && isTEnd && tupletStackUpper.length > 1) {
-                    // --- DYNAMIC TUPLET NUMBER CALCULATION ---
                     const getVexNoteValue = (note) => {
                         const durStr = note.getDuration().replace('r', '');
                         const baseMap = { 'w': 4, 'h': 2, 'q': 1, '8': 0.5, '16': 0.25, '32': 0.125, '64': 0.0625 };
@@ -455,11 +469,9 @@
 
                     let visualTotal = tupletStackUpper.reduce((acc, n) => acc + getVexNoteValue(n), 0);
                     let ratio = tupletAcc > 0 ? visualTotal / tupletAcc : 1;
-                    
-                    let num_notes = tupletStackUpper.length; 
+                    let num_notes = tupletStackUpper.length;
                     let notes_occupied = 2;
 
-                    // Finds simplest integer ratio (e.g. 1.25 -> 5:4)
                     for (let den of [1, 2, 4, 8, 16, 32, 64]) {
                         let num = ratio * den;
                         if (Math.abs(num - Math.round(num)) < 0.01) {
@@ -469,21 +481,20 @@
                         }
                     }
 
-                    // Decides where to draw bracket (Upper or Lower Stave)
                     const upperCount = tupletStackUpper.filter(n => !n.isRest()).length;
                     const lowerCount = tupletStackLower.filter(n => !n.isRest()).length;
                     const renderOnUpper = upperCount >= lowerCount;
-                    
+
                     const t = new VF.Tuplet(tupletStackUpper, {
                         location: VF.Tuplet.LOCATION_TOP,
                         num_notes: num_notes,
                         notes_occupied: notes_occupied,
-                        ratioed: false, // The bracket will now always be visible
+                        ratioed: false,
                         bracketed: true
                     });
                     if (!renderOnUpper) {
                         t.setBracketed(false);
-                        t.numerator_glyphs = []; // Visually remove numbers
+                        t.numerator_glyphs = [];
                         t.denom_glyphs = [];
                     }
                     tuplets.push(t);
@@ -492,12 +503,12 @@
                         location: VF.Tuplet.LOCATION_TOP,
                         num_notes: num_notes,
                         notes_occupied: notes_occupied,
-                        ratioed: false, // The bracket will now always be visible
+                        ratioed: false,
                         bracketed: true
                     });
                     if (renderOnUpper) {
                         gt.setBracketed(false);
-                        gt.numerator_glyphs = []; // Visually remove numbers
+                        gt.numerator_glyphs = [];
                         gt.denom_glyphs = [];
                     }
                     tuplets.push(gt);
@@ -506,14 +517,6 @@
                     tupletStackLower = [];
                     tupletAcc = 0;
                 }
-
-                // 3. SAFETY RESET (The line in question)
-                // It ensures that if the note is a rest or long note,
-                // the next beam group starts from zero.
-                if (isBoundary || note.isRest() || !canReceiveBeam) {
-                    currentBeamGroup = [];
-                }
-
             });
 
             const formatter = new VF.Formatter().joinVoices([voiceUpper, voiceLower]);
@@ -587,7 +590,12 @@
             div.innerHTML = ""; // Clears to avoid overlap
 
             // Version check (Kept as per your original code)
-            const VF = (typeof VexFlow !== 'undefined') ? VexFlow : Vex.Flow;
+            const VF = (typeof VexFlow !== 'undefined') ? VexFlow : (typeof Vex !== 'undefined' ? Vex.Flow : null);
+
+            if (!VF) {
+                throw new Error("VexFlow library not loaded. Please ensure vexflow.js is installed correctly.");
+            }
+
             const { clefUpper, clefLower, timeSig, keySig, data, scale, canvasHeight } = currentMusicParams;
 
             // Configures scale and height based on parameters received from SC
