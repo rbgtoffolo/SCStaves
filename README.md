@@ -66,3 +66,6 @@ p = Pbind(
 // Renders 8 events from the Pbind, optionally quantizing to 16th notes (0.25)
 a.createScore(p, 8, 0.25);
 ```
+## Screen Shot
+
+![screen-shot](StavesScreenShot.png)
