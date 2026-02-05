@@ -552,8 +552,24 @@
             const ties = [];
             segmentedData.forEach((item, i) => {
                 if (item.tiedToNext && processed.upper[i + 1]) {
-                    if (!processed.upper[i].isRest()) ties.push(new VF.StaveTie({ first_note: processed.upper[i], last_note: processed.upper[i + 1] }));
-                    if (!processed.lower[i].isRest()) ties.push(new VF.StaveTie({ first_note: processed.lower[i], last_note: processed.lower[i + 1] }));
+                    if (!processed.upper[i].isRest()) {
+                        const indices = processed.upper[i].keys.map((_, k) => k);
+                        ties.push(new VF.StaveTie({
+                            first_note: processed.upper[i],
+                            last_note: processed.upper[i + 1],
+                            first_indices: indices,
+                            last_indices: indices
+                        }));
+                    }
+                    if (!processed.lower[i].isRest()) {
+                        const indices = processed.lower[i].keys.map((_, k) => k);
+                        ties.push(new VF.StaveTie({
+                            first_note: processed.lower[i],
+                            last_note: processed.lower[i + 1],
+                            first_indices: indices,
+                            last_indices: indices
+                        }));
+                    }
                 }
             });
             ties.forEach(t => t.setContext(context).draw());
