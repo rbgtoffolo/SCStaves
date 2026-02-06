@@ -1,0 +1,11 @@
+(
+  name: "Supercollider Staves",
+  summary: "Staves is a Musical Score Viewer using the VexFlow library and Supercollider's helpBrowser. The class converts data from a Pbind into musical notation.",
+  author: "Rael B. Gimenes",
+  copyright: "2026",
+  license: "GPL",
+  version: "0.0.1",
+  schelp: "Staves", 
+  dependencies: ["JSONlib"],
+  url: "https://github.com/rbgtoffolo/SCStaves"
+)

@@ -6,21 +6,25 @@ As I am not an experienced JS programmer, I utilized AI assistance to develop fe
 
 The project is currently in its early stages of  development and is open to suggestions, feedback, and potential collaborations.
 
+# Installation
+
+```
+// install quarks
+Quarks.install("https://github.com/rbgtoffolo/SCStaves");
+```
+
 ## Dependencies
 
-To make the Staves class work, two dependencies are required: JSONlib and vexflow.js.
+The Quarks package already resolves the dependencies for JSONlib and vexflow.js. The version of vexflow.js distributed in this Quarks package is 4.2.6 and is available on the project's GitHub at: https://github.com/0xfe/vexflow/releases. The vexflow.js file is located in the build/cjs folder in the original package.
 
-### JSONlib
+If there are any issues with JSONlib, it is accessible in the Quarks directory or on the project's GitHub at: https://github.com/musikinformatik/JSONlib#
 
-Just run **Quarks.install("JSONlib");** in Supercollider.
+## 📁 File Structure
 
-### Vexflow
-
-
-1. Download Vexflow at: https://github.com/0xfe/vexflow/releases
-2. Locate **vexflow.js** file in the build/cjs folder.
-3. Copy vexflow.js to the Extensions/Staves folder.
-
+For correct operation, files must be in the same folder:
+- 📄 `Staves.sc`: Class definition and bridge logic.
+- 🌐 `Staves.html`: Template with the `window.drawMusic` function.
+- ⚙️ `vexflow.js`: The VexFlow library.
 
 ## 🚀 Implemented Features
 
@@ -35,12 +39,7 @@ Just run **Quarks.install("JSONlib");** in Supercollider.
 * 3️⃣ **Tuplets**: Automatic detection of tuplets (triplets, quintuplets, etc.) with ratio calculation and intelligent bracket formatting.
 * 📐 **Quantization**: Built-in rhythmic quantization to align durations to a grid (e.g., 0.25), useful for cleaning up algorithmic output.
 
-## 📁 File Structure
 
-For correct operation, files must be in the same folder:
-- 📄 `Staves.sc`: Class definition and bridge logic.
-- 🌐 `Staves.html`: Template with the `window.drawMusic` function.
-- ⚙️ `vexflow.js`: The VexFlow library.
 
 ## 🛠️ How to use
 
