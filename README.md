@@ -6,25 +6,26 @@ As I am not an experienced JS programmer, I utilized AI assistance to develop fe
 
 The project is currently in its early stages of  development and is open to suggestions, feedback, and potential collaborations.
 
-# Installation
+## Installation
 
 ```
 // install quarks
 Quarks.install("https://github.com/rbgtoffolo/SCStaves");
 ```
 
-## Dependencies
+### Dependencies
 
 The Quarks package already resolves the dependencies for JSONlib and vexflow.js. The version of vexflow.js distributed in this Quarks package is 4.2.6 and is available on the project's GitHub at: https://github.com/0xfe/vexflow/releases. The vexflow.js file is located in the build/cjs folder in the original package.
 
-If there are any issues with JSONlib, it is accessible in the Quarks directory or on the project's GitHub at: https://github.com/musikinformatik/JSONlib#
+If there are any issues with JSONlib, it is accessible in the Quarks directory or on the project's GitHub at: https://github.com/musikinformatik/JSONlib
 
-## 📁 File Structure
+### 📁 File Structure
 
-For correct operation, files must be in the same folder:
+For correct operation, the files should be structured as follows within your extension directory:
 - 📄 `Staves.sc`: Class definition and bridge logic.
 - 🌐 `Staves.html`: Template with the `window.drawMusic` function.
-- ⚙️ `vexflow.js`: The VexFlow library.
+- 📁 `vexflow/`
+  - ⚙️ `vexflow.js`: The VexFlow library.
 
 ## 🚀 Implemented Features
 

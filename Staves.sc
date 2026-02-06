@@ -30,19 +30,19 @@ Staves {
 			canvasHeight = 600;
 			this.winHeight = 600;
 			this.winWidth = 1024
-		} { 
-			if(staffSize == "small") 
+		} {
+			if(staffSize == "small")
 			{ scale = 0.8;
 			canvasHeight = 250;
-			this.winHeight = 250; } 
+			this.winHeight = 250; }
 			{ scale = 1.0;
 			canvasHeight = 350;
 			this.winHeight = 350; };
-			
+
 		};
 
         htmlPath = localPath ++ "Staves.html";
-        vexPath = localPath ++ "vexflow.js";
+        vexPath = localPath ++ "vexflow/vexflow.js";
 
         if(File.exists(htmlPath).not) { ^"Erro: HTML não encontrado".error };
 
@@ -50,7 +50,7 @@ Staves {
 
         if(File.exists(vexPath)) {
             htmlString = htmlString.replace(
-                "<script src=\"vexflow.js\"></script>",
+                "<script src=\"vexflow/vexflow.js\"></script>",
                 "<script>" ++ File.readAllString(vexPath) ++ "</script>"
             );
         };
