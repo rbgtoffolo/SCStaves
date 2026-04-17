@@ -577,7 +577,14 @@
 
         // --- MAIN FUNCTION (Entry Point) ---
         window.drawMusic = (clefUpper, clefLower, timeSig, keySig, data, scale, canvasHeight) => {
-            // Memorizes parameters so resize knows what to draw
+
+    const rawData = typeof data === 'string' ? JSON.parse(data) : data;
+
+    if (!rawData || rawData.length === 0) {
+        console.log("Aguardando dados das notas...");
+        return; 
+    }
+
             currentMusicParams = { clefUpper, clefLower, timeSig, keySig, data, scale, canvasHeight };
 
             // Calls render executor

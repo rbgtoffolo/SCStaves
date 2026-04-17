@@ -95,16 +95,17 @@ Staves {
 	}
 
     updateView {
-		var json;
-        if(webView.notNil) {
-            {
-
-				json = notesData.asJSON;
-				// Post << json; // for Debug
-                webView.runJavaScript(
-					"window.drawMusic('%', '%', '%', '%', %, %, %);".format("treble", "bass",  timeSignature, keySignature, json, scale, canvasHeight)
-                );
-            }.defer(0.1);
-        };
-    }
+    var json;
+    // Só executa se o webView existir E se houver notas para mostrar
+    if(webView.notNil and: { notesData.notEmpty }) {
+        {
+            json = notesData.asJSON;
+            webView.runJavaScript(
+                "window.drawMusic('%', '%', '%', '%', %, %, %);".format(
+                    "treble", "bass", timeSignature, keySignature, json, scale, canvasHeight
+                )
+            );
+        }.defer(0.1);
+    };
+}
 }
