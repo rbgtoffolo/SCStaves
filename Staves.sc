@@ -1,137 +1,110 @@
+// Depends on JSONlib
+
 Staves {
-	var <window, <webView, <notesData, <type, <clef, <timeSignature;
-	var <localPath;
+    var <window, <webView, <localPath, <notesData, <>posX, <>posY, <>winWidth, <>winHeight;
+    var <clef, <>timeSignature, <>keySignature, <>staffSize, <>scale, <canvasHeight;
+    var <>quantization;
 
-	*new {
-		^super.new.init;
-	}
+    *new { | timeSignature = "4/4", keySignature = "C", staffSize = "medium", quantization = nil, posX = 100, posY = 500, winWidth = 950, winHeight= 450 |
+		^super.newCopyArgs(timeSignature, keySignature, staffSize, quantization, posX, posY, winWidth, winHeight).init;
+    }
 
-	init {
+    init {
 		notesData = [];
-		localPath = PathName(this.class.filenameSymbol.asString).pathOnly;
-	}
+        localPath = PathName(this.class.filenameSymbol.asString).pathOnly;
+    }
 
-	setup { |argType = \single, argClef = "treble", argTime = "4/4"|
-		var htmlString, htmlPath, vexPath;
-		type = argType;
-		clef = argClef;
-		timeSignature = argTime; // Armazena a fórmula (ex: "3/4", "7/8")
+	setup { | timeSignature = "4/4", keySignature = "C", staffSize = "medium", quantization = nil, posX = 100, posY = 500, winWidth = 950, winHeight= 450 |
+        var htmlString, htmlPath, vexPath;
+        this.timeSignature = timeSignature;
+		this.keySignature = keySignature;
+		this.staffSize = staffSize;
+		this.posX = posX;
+		this.posY = posY;
+		this.winWidth = winWidth;
+		this.winHeight = winHeight;
+		this.quantization = quantization;
 
-		htmlPath = localPath ++ "Staves.html";
-		vexPath = localPath ++ "vexflow.js";
-
-		if(File.exists(htmlPath).not) { ^"Erro: staves.html não encontrado".error };
-
-		htmlString = File.readAllString(htmlPath);
-
-		if(File.exists(vexPath)) {
-			var vexJs = File.readAllString(vexPath);
-			htmlString = htmlString.replace("<script src=\"vexflow.js\"></script>", "<script>" ++ vexJs ++ "</script>");
+		if(staffSize == "large") {
+			scale = 1.2;
+			canvasHeight = 600;
+			this.winHeight = 600;
+			this.winWidth = 1024
+		} { 
+			if(staffSize == "small") 
+			{ scale = 0.8;
+			canvasHeight = 250;
+			this.winHeight = 250; } 
+			{ scale = 1.0;
+			canvasHeight = 350;
+			this.winHeight = 350; };
+			
 		};
 
-		{
-			window = Window("Staves Renderer", Rect(100, 100, 850, 500)).front;
-			webView = WebView(window, window.view.bounds);
+        htmlPath = localPath ++ "Staves.html";
+        vexPath = localPath ++ "vexflow.js";
+
+        if(File.exists(htmlPath).not) { ^"Erro: HTML não encontrado".error };
+
+        htmlString = File.readAllString(htmlPath);
+
+        if(File.exists(vexPath)) {
+            htmlString = htmlString.replace(
+                "<script src=\"vexflow.js\"></script>",
+                "<script>" ++ File.readAllString(vexPath) ++ "</script>"
+            );
+        };
+
+        {
+            window = Window("Score View", Rect(this.posX, this.posY, this.winWidth, this.winHeight)).front;
+			webView = WebView();
+			window.layout = VLayout(webView);
+			window.layout.margins_(0);
+			window.layout.spacing_(0);
 			webView.setHtml(htmlString);
 
 			webView.onLoadFinished = { this.updateView };
-		}.defer;
-	}
-	// Método para atualizar a vista usando runJavaScript (API moderna)
+        }.defer;
+    }
 
-	updateView {
-		var json;
+	// Data processing and manipulation methods
 
-		if(webView.notNil) {
-			json = "[" ++ notesData.collect { |item|
-				var midiVal = if(item[\midi].isSequenceableCollection) {
-					"[" ++ item[\midi].collect(_.asFloat).join(",") ++ "]"
-				} {
-					item[\midi].asFloat.asString
+	createScore { |pbind, numEvents = 8, quant|
+		var stream = pbind.asStream;
+		var collected = [];
+		var q = quant ? quantization;
+
+		numEvents.do {
+			var ev = stream.next(Event.default);
+			if(ev.notNil) {
+				var midi, dur;
+				ev.use {
+					midi = ~midinote.value;
+					dur = ~dur.value;
 				};
-				"{ \"midi\": %, \"dur\": %, \"hasTie\": % }"
-				.format(midiVal, item[\dur].asFloat, item[\hasTie] ?? false)
-			}.join(",") ++ "]";
-
-			{
-				var jsCommand =
-				"if(window.drawMusic) { window.drawMusic(% , '%', '%', '%'); }"
-				.format(json, type, clef, timeSignature);
-
-				webView.runJavaScript(jsCommand);
-			}.defer(0.1);
-		};
-	}
-
-	addNotes { |array|
-		notesData = array.collect { |item|
-			if(item.isArray and: { item.size == 2 }) {
-				(midi: item[0], dur: item[1].asFloat)
-			} {
-				if(item.isArray) {
-					(midi: item, dur: 1)
-				} {
-					(midi: item.asFloat, dur: 1)
-				}
-			}
-		};
-
-		{ this.updateView }.defer(0.05);
-	}
-	normalizeNotesForTimeSig { |notes|
-		var beatsPerMeasure, beatValue, pulseUnit;
-		var acc = 0.0;
-		var normalized = List.new;
-
-		beatsPerMeasure = timeSignature.split($/)[0].asInteger;
-		beatValue = timeSignature.split($/)[1].asInteger;
-		pulseUnit = 4.0 / beatValue;
-
-		notes.do { |n|
-			var remaining = n[\dur].asFloat;
-
-			while(
-				{ remaining > 0.0001 },
-				{
-					var space = (beatsPerMeasure * pulseUnit) - acc;
-					var dur = remaining.min(space);
-
-					normalized.add((
-						midi: n[\midi],
-						dur: dur,
-						hasTie: (remaining > dur)
-					));
-
-					remaining = remaining - dur;
-					acc = acc + dur;
-
-					if(acc >= ((beatsPerMeasure * pulseUnit) - 0.0001)) {
-						acc = 0.0;
-					};
-				}
-			);
-		};
-
-		^normalized
-	}
-
-renderPbind { |pbind, numEvents = 8|
-	var stream = pbind.asStream;
-	var collected = [];
-
-	numEvents.do {
-		var ev = stream.next(Event.default);
-		if(ev.notNil) {
-			var midi, dur;
-			ev.use {
-				midi = ~midinote.value;
-				dur = ~dur.value;
+				if(q.notNil) {
+					dur = dur.round(q);
+				};
+				collected = collected.add((midi: midi, dur: dur));
 			};
-			collected = collected.add((midi: midi.round, dur: dur));
 		};
-	};
 
-	notesData = collected;
-	{ this.updateView }.defer(0.1);
-}
+		notesData = collected;
+
+		{ this.updateView }.defer(0.1);
+	}
+
+    updateView {
+		var json;
+        if(webView.notNil) {
+            {
+
+				json = notesData.asJSON;
+				// Post << json; // for Debug
+                webView.runJavaScript(
+					"window.drawMusic('%', '%', '%', '%', %, %, %);".format("treble", "bass",  timeSignature, keySignature, json, scale, canvasHeight)
+                );
+            }.defer(0.1);
+        };
+    }
 }
