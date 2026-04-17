@@ -6,6 +6,6 @@
   license: "GPL",
   version: "0.0.2",
   schelp: "Staves", 
-  dependencies: ["https://github.com/musikinformatik/JSONlib.git"],
+  dependencies: #["JSONlib"],
   url: "https://github.com/rbgtoffolo/SCStaves"
 )
