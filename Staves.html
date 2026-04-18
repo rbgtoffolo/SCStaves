@@ -164,7 +164,7 @@
 
                 const isRestInJSON = (item.midi === null || item.midi === "rest" || item.midi === "r");
 
-                // 2. REAL REST HANDLING (Where the missing lines go)
+                // 2. REAL REST HANDLING
                 if (isRestInJSON) {
                     const upperRest = new VF.StaveNote({ clef: "treble", keys: ["b/4"], duration: vexDur + "r" });
                     const lowerRest = new VF.StaveNote({ clef: "bass", keys: ["d/3"], duration: vexDur + "r" });
@@ -182,10 +182,9 @@
                     return; // Exit this iteration and go to the next note
                 }
 
-                // REAL NOTE HANDLING (Here we use memory)
+                // REAL NOTE HANDLING
                 const info = convertMidiToVex(item.midi, keySig);
 
-                // Example decision using memory:
                 // If previous note was Bass clef, and this is Bass too,
    
                 let stemDirection = null;
