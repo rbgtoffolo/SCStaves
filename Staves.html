@@ -64,13 +64,14 @@
             "9/8": { beat: 1.5, beam: 3, grouping: [3, 3, 3] },
             "5/8": { beat: 2.5, beam: 5, grouping: [5] },    // Single pulse or depending on style (can be 3+2)
             "2/2": { beat: 2.0, beam: 2, grouping: [2] },    // Half note pulse
+            "3/2": { beat: 2.0, beam: 1, grouping: [1, 1, 1] }
         };
 
         // --- HELPER FUNCTIONS ---
         function convertMidiToVex(midi, keySig) {
             const flatKeys = ["F", "Dm", "Bb", "Gm", "Eb", "Cm", "Ab", "Fm", "Db", "Bbm", "Gb", "Ebm", "Cb", "Abm"];
             const useFlats = flatKeys.includes(keySig);
-            const names = useFlats 
+            const names = useFlats
                 ? ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"]
                 : ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
 
@@ -256,21 +257,28 @@
             const measureSize = numerator * (4 / denominator);
             const TOLERANCE = 0.0001;
 
+            // Durações que o VexFlow consegue desenhar sem precisar de ligaduras internas
+            const standardDurs = [4, 6, 3, 2, 1.5, 1, 0.75, 0.5, 0.375, 0.25, 0.125, 0.1875];
             let segmented = [];
             let absPos = 0;
 
             data.forEach(note => {
                 let remaining = Math.round(note.dur * 10000) / 10000;
-
-                // --- NEW: Detects if tuplet to avoid segmentation ---
-                const standardDurs = [4, 3, 2, 1.5, 1, 0.75, 0.5, 0.375, 0.25, 0.125, 0.1875];
                 const isTuplet = !standardDurs.some(s => Math.abs(note.dur - s) < 0.01) && note.dur > 0;
 
                 while (remaining > TOLERANCE) {
                     let posInMeasure = Math.round((absPos % measureSize) * 10000) / 10000;
                     let nextBeat = (Math.floor((posInMeasure / beatValue) + TOLERANCE) + 1) * beatValue;
                     let nextMeasure = measureSize;
-                    let nextBoundary = Math.min(nextBeat, nextMeasure);
+
+                    // Se a nota tem uma duração padrão, está alinhada com o tempo e cabe no compasso,
+                    // não a segmentamos, permitindo que ela cruze os tempos internos (ex: semibreve em 4/4).
+                    const isMappable = standardDurs.some(s => Math.abs(note.dur - s) < 0.01);
+                    const isAligned = Math.abs(posInMeasure % beatValue) < TOLERANCE;
+
+                    let nextBoundary = (isMappable && isAligned && note.dur <= (nextMeasure - posInMeasure) + TOLERANCE)
+                        ? (posInMeasure + note.dur)
+                        : Math.min(nextBeat, nextMeasure);
 
                     if (Math.abs(posInMeasure - measureSize) < TOLERANCE) {
                         nextBoundary = beatValue;
